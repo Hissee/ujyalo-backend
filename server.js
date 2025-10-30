@@ -1,48 +1,97 @@
 // server.js
-const express = require("express");
-const mongoose = require("mongoose");
-const Product = require("./models/product");
-const { result } = require("lodash");
+import express from "express";
+import bcrypt from "bcryptjs";
+import cors from "cors";
+import { connectDB, getDB } from "./db.js";
+import dotenv from "dotenv";
 
-//express app
-const server = express();
+dotenv.config();
 
-//connect  to mongodb
-const dbURI = "mongodb+srv://ujyaloteam:HisseeShradha@ujyalokhetcluster.ebzkrq3.mongodb.net/?appName=UjyaloKhetCluster";
+const app = express();
+app.use(express.json());
+app.use(cors());
 
+connectDB();
 
-server.use(express.json());
-server.get('/add-product', (req, res) => {
-  const product = new Product({
-    id: 1,
-    name: "Fresh Tomatoes",
-    category: "Vegetables",
-    price: 80,
-    quantity: 50,
-    image: "https://images.pexels.com/photos/533280/pexels-photo-533280.jpeg?auto=compress&cs=tinysrgb&w=400",
-    location: "Bhaktapur",
-    farmerId: "1",
-    farmerName: "Ram Sharma",
-    description: "Fresh, organically grown tomatoes from local farms. Rich in vitamins and perfect for daily cooking. These tomatoes are grown without harmful pesticides and are harvested at peak ripeness.",
-    harvestDate: "2024-01-10",
-    organic: true
-  });
-  product.save()
-    .then(() => {
-      res.send(result);
-    })
-    .catch((err) => {
-      console.log(err)
+// ----------------- Customer Signup -----------------
+app.post("/api/signup", async (req, res) => {
+  try {
+    const db = getDB();
+    const { firstName, middleName, lastName, email, phone, province, city, street, password } = req.body;
+
+    const existing = await db.collection("users").findOne({ email });
+    if (existing) return res.status(400).json({ message: "Email already registered" });
+
+    const hashedPassword = await bcrypt.hash(password, 10);
+
+    const result = await db.collection("users").insertOne({
+      firstName,
+      middleName,
+      lastName,
+      name: [firstName, middleName, lastName].filter(Boolean).join(" "),
+      email,
+      phone,
+      role: "customer",
+      address: { province, city, street },
+      password: hashedPassword,
+      createdAt: new Date(),
+      updatedAt: new Date()
     });
-  })
 
-mongoose
-  .connect(dbURI, { useNewUrlParser: true, useUnifiedTopology: true })
-  .then((result) => server.listen(3000, () => console.log("Server running on port 3000")))
-  .catch((err) => console.log("DB connection error:", err));
-
-server.get("/", (req, res) => {
-  res.send("Server is running!");
+    res.status(201).json({ message: "Signup successful", userId: result.insertedId });
+  } catch (error) {
+    res.status(500).json({ message: "Server error", error: error.message });
+  }
 });
 
+// ----------------- Farmer Add Product -----------------
+app.post("/api/products", async (req, res) => {
+  try {
+    const db = getDB();
+    const { farmerId, name, description, category, price, quantity, images } = req.body;
 
+    const result = await db.collection("products").insertOne({
+      farmerId,
+      name,
+      description,
+      category,
+      price,
+      quantity,
+      images: images || [],
+      status: "available",
+      createdAt: new Date(),
+      updatedAt: new Date()
+    });
+
+    res.status(201).json({ message: "Product added", productId: result.insertedId });
+  } catch (error) {
+    res.status(500).json({ message: "Server error", error: error.message });
+  }
+});
+
+// ----------------- Place Order -----------------
+app.post("/api/orders", async (req, res) => {
+  try {
+    const db = getDB();
+    const { customerId, products, deliveryAddress } = req.body;
+
+    const totalAmount = products.reduce((sum, p) => sum + p.price * p.quantity, 0);
+
+    const result = await db.collection("orders").insertOne({
+      customerId,
+      products,
+      totalAmount,
+      status: "pending",
+      deliveryAddress,
+      createdAt: new Date(),
+      updatedAt: new Date()
+    });
+
+    res.status(201).json({ message: "Order placed", orderId: result.insertedId });
+  } catch (error) {
+    res.status(500).json({ message: "Server error", error: error.message });
+  }
+});
+
+const PORT = process.env.PORT || 3000;
+app.listen(PORT, () => console.log(`🚀 Server running on port ${PORT}`));
