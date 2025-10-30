@@ -1,5 +1,8 @@
 const { MongoClient } = require('mongodb');
 require('dotenv').config();
+import dotenv from "dotenv";
+dotenv.config();
+
 
 async function main() {
   const uri = process.env.MONGODB_URI; // Your Atlas URI

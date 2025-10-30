@@ -1,19 +1,27 @@
-const { MongoClient } = require('mongodb');
+// db.js
+import { MongoClient } from "mongodb";
+import dotenv from "dotenv";
 
-// Replace with your MongoDB cluster connection string
-const uri = "mongodb+srv://maharjanhissee_db_user:y9qUBjTySaaQINon@ujyalokhetcluster.ebzkrq3.mongodb.net/";
+dotenv.config();
 
-const client = new MongoClient(uri);
+let db;
 
-async function connectDB() {
+export const connectDB = async () => {
+  if (db) return db;
+
   try {
+    const client = new MongoClient(process.env.MONGODB_URI);
     await client.connect();
-    console.log("Connected to MongoDB!");
-    return client;
-  } catch (err) {
-    console.error("MongoDB connection error:", err);
+    db = client.db("ujyaloDB");
+    console.log("✅ MongoDB connected successfully");
+    return db;
+  } catch (error) {
+    console.error("❌ MongoDB connection failed:", error.message);
+    process.exit(1);
   }
-}
+};
 
-// Export so other files can use it
-module.exports = { connectDB, client };
+export const getDB = () => {
+  if (!db) throw new Error("Database not connected");
+  return db;
+};

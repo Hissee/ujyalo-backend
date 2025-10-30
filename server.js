@@ -1,7 +1,11 @@
-const express = require("express");
-const bcrypt = require("bcryptjs");
-const cors = require("cors");
-const { connectDB, getDB } = require("./db");
+// server.js
+import express from "express";
+import bcrypt from "bcryptjs";
+import cors from "cors";
+import { connectDB, getDB } from "./db.js";
+import dotenv from "dotenv";
+
+dotenv.config();
 
 const app = express();
 app.use(express.json());
@@ -15,14 +19,11 @@ app.post("/api/signup", async (req, res) => {
     const db = getDB();
     const { firstName, middleName, lastName, email, phone, province, city, street, password } = req.body;
 
-    // Check if email exists
     const existing = await db.collection("users").findOne({ email });
     if (existing) return res.status(400).json({ message: "Email already registered" });
 
-    // Hash password
     const hashedPassword = await bcrypt.hash(password, 10);
 
-    // Insert user
     const result = await db.collection("users").insertOne({
       firstName,
       middleName,
@@ -39,7 +40,7 @@ app.post("/api/signup", async (req, res) => {
 
     res.status(201).json({ message: "Signup successful", userId: result.insertedId });
   } catch (error) {
-    res.status(500).json({ message: "Server error", error });
+    res.status(500).json({ message: "Server error", error: error.message });
   }
 });
 
@@ -64,7 +65,7 @@ app.post("/api/products", async (req, res) => {
 
     res.status(201).json({ message: "Product added", productId: result.insertedId });
   } catch (error) {
-    res.status(500).json({ message: "Server error", error });
+    res.status(500).json({ message: "Server error", error: error.message });
   }
 });
 
@@ -88,10 +89,9 @@ app.post("/api/orders", async (req, res) => {
 
     res.status(201).json({ message: "Order placed", orderId: result.insertedId });
   } catch (error) {
-    res.status(500).json({ message: "Server error", error });
+    res.status(500).json({ message: "Server error", error: error.message });
   }
 });
 
-// ----------------- Start Server -----------------
 const PORT = process.env.PORT || 3000;
-app.listen(PORT, () => console.log(`Server running on port ${PORT}`));
+app.listen(PORT, () => console.log(`🚀 Server running on port ${PORT}`));
