@@ -1,45 +1,78 @@
-// controllers/products.controller.js
-import Product from "../models/product.model.js";
+import { getDB } from "../db.js";
+import { ObjectId } from "mongodb";
 
-// Add new product (Farmer only)
+
+// ----------------- Add Product -----------------
 export const addProduct = async (req, res) => {
   try {
+    const db = getDB();
     const { name, description, category, price, quantity, images } = req.body;
 
-    const newProduct = new Product({
+    // Input validation
+    if (!name || !price || !quantity) {
+      return res.status(400).json({ message: "Name, price, and quantity are required" });
+    }
+    if (price <= 0 || quantity <= 0) {
+      return res.status(400).json({ message: "Price and quantity must be greater than zero" });
+    }
+
+    const result = await db.collection("products").insertOne({
+      farmerId: req.user.userId, // updated to match JWT payload
       name,
-      description,
-      category,
+      description: description || "",
+      category: category || "general",
       price,
       quantity,
-      images,
-      farmerId: req.user.id, // from token
+      images: images || [],
+      status: "available",
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    });
+    
+      console.log("Product inserted:", result.insertedId);
+    
+
+    res.status(201).json({
+      message: "Product added successfully",
+      productId: result.insertedId,
+      farmerId: req.user.userId
     });
 
-    await newProduct.save();
-    res.status(201).json({ success: true, product: newProduct });
-  } catch (err) {
-    res.status(500).json({ success: false, message: err.message });
+  } catch (error) {
+    res.status(500).json({ message: "Server error", error: error.message });
   }
 };
 
-// Get all products
+// ----------------- Get All Products -----------------
 export const getAllProducts = async (req, res) => {
   try {
-    const products = await Product.find();
-    res.status(200).json(products);
-  } catch (err) {
-    res.status(500).json({ success: false, message: err.message });
+    const db = getDB();
+    const products = await db.collection("products")
+      .find({ status: "available" })
+      .toArray();
+    res.json(products);
+  } catch (error) {
+    res.status(500).json({ message: "Server error", error: error.message });
   }
 };
 
-// Get product by ID
+// ----------------- Get Product by ID -----------------
 export const getProductById = async (req, res) => {
   try {
-    const product = await Product.findById(req.params.id);
+    const db = getDB();
+    const { id } = req.params;
+
+    if (!ObjectId.isValid(id)) return res.status(400).json({ message: "Invalid product ID" });
+
+    const product = await db.collection("products").findOne({
+      _id: new ObjectId(id),
+      status: "available"
+    });
+
     if (!product) return res.status(404).json({ message: "Product not found" });
-    res.status(200).json(product);
-  } catch (err) {
-    res.status(500).json({ success: false, message: err.message });
+
+    res.json(product);
+  } catch (error) {
+    res.status(500).json({ message: "Server error", error: error.message });
   }
 };

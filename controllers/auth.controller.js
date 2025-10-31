@@ -1,81 +1,98 @@
-const { getDB } = require("../db");
-const bcrypt = require("bcryptjs");
-const jwt = require("jsonwebtoken");
+// controllers/auth.controller.js
+import bcrypt from "bcryptjs";
+import jwt from "jsonwebtoken";
+import { getDB } from "../db.js";
 
-const saltRounds = parseInt(process.env.SALT_ROUNDS || "10");
-const JWT_SECRET = process.env.JWT_SECRET || "change_this_in_prod";
+const JWT_SECRET = process.env.JWT_SECRET || "change_this_secret";
 
-if (!JWT_SECRET) throw new Error("JWT_SECRET must be set in .env");
-
-async function signupCommon(userObj, res) {
-  const db = getDB();
+// -------------------- Customer Signup --------------------
+export const signupCustomer = async (req, res) => {
   try {
-    userObj.password = await bcrypt.hash(userObj.password, saltRounds);
-    userObj.createdAt = new Date();
-    userObj.updatedAt = new Date();
-    const result = await db.collection("users").insertOne(userObj);
-    return res.status(201).json({ message: "Signup successful", userId: result.insertedId });
-  } catch (err) {
-    if (err.code === 11000) return res.status(400).json({ message: "Email already registered" });
-    console.error("Signup error:", err);
-    return res.status(500).json({ message: "Server error" });
-  }
-}
-
-exports.signupCustomer = async (req, res) => {
-  try {
-    const { firstName, middleName, lastName, email, phone, province, city, street, password } = req.body;
-    if (!firstName || !email || !password) return res.status(400).json({ message: "Missing required fields" });
-
-    const user = {
-      firstName, middleName, lastName,
-      name: [firstName, middleName, lastName].filter(Boolean).join(" "),
-      email, phone, role: "customer",
-      address: { province, city, street },
-      password
-    };
-    await signupCommon(user, res);
-  } catch (err) {
-    console.error(err);
-    res.status(500).json({ message: "Server error" });
-  }
-};
-
-exports.signupFarmer = async (req, res) => {
-  try {
-    const { firstName, middleName, lastName, email, phone, province, password } = req.body;
-    if (!firstName || !email || !password) return res.status(400).json({ message: "Missing required fields" });
-
-    const user = {
-      firstName, middleName, lastName,
-      name: [firstName, middleName, lastName].filter(Boolean).join(" "),
-      email, phone, role: "farmer",
-      address: { province, city: "", street: "" },
-      password
-    };
-    await signupCommon(user, res);
-  } catch (err) {
-    console.error(err);
-    res.status(500).json({ message: "Server error" });
-  }
-};
-
-exports.login = async (req, res) => {
-  try {
-    const { email, password } = req.body;
-    if (!email || !password) return res.status(400).json({ message: "Missing email or password" });
-
     const db = getDB();
+    const { firstName, middleName, lastName, email, phone, province, city, street, password } = req.body;
+
+    const existing = await db.collection("users").findOne({ email });
+    if (existing) return res.status(400).json({ message: "Email already registered" });
+
+    const hashedPassword = await bcrypt.hash(password, 10);
+    const result = await db.collection("users").insertOne({
+      firstName,
+      middleName,
+      lastName,
+      name: [firstName, middleName, lastName].filter(Boolean).join(" "),
+      email,
+      phone,
+      role: "customer",
+      address: { province, city, street },
+      password: hashedPassword,
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    });
+
+    res.status(201).json({ message: "Customer signup successful", userId: result.insertedId });
+  } catch (error) {
+    res.status(500).json({ message: "Server error", error: error.message });
+  }
+};
+
+// -------------------- Farmer Signup --------------------
+export const signupFarmer = async (req, res) => {
+  try {
+    const db = getDB();
+    const { firstName, middleName, lastName, email, phone, province, city, street, password } = req.body;
+
+    const existing = await db.collection("users").findOne({ email });
+    if (existing) return res.status(400).json({ message: "Email already registered" });
+
+    const hashedPassword = await bcrypt.hash(password, 10);
+    const result = await db.collection("users").insertOne({
+      firstName,
+      middleName,
+      lastName,
+      name: [firstName, middleName, lastName].filter(Boolean).join(" "),
+      email,
+      phone,
+      role: "farmer",
+      address: { province, city, street },
+      password: hashedPassword,
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    });
+
+    res.status(201).json({ message: "Farmer signup successful", userId: result.insertedId });
+  } catch (error) {
+    res.status(500).json({ message: "Server error", error: error.message });
+  }
+};
+
+// -------------------- Login --------------------
+export const login = async (req, res) => {
+  try {
+    const db = getDB();
+    const { email, password } = req.body;
+
     const user = await db.collection("users").findOne({ email });
-    if (!user) return res.status(400).json({ message: "Invalid email or password" });
+    if (!user) return res.status(404).json({ message: "Invalid email or password" });
 
-    const match = await bcrypt.compare(password, user.password);
-    if (!match) return res.status(400).json({ message: "Invalid email or password" });
+    const isMatch = await bcrypt.compare(password, user.password);
+    if (!isMatch) return res.status(400).json({ message: "Invalid email or password" });
 
-    const token = jwt.sign({ userId: user._id.toString(), role: user.role, name: user.name }, JWT_SECRET, { expiresIn: "7d" });
-    res.json({ message: "Login successful", token, user: { userId: user._id, role: user.role, name: user.name } });
-  } catch (err) {
-    console.error("Login error:", err);
-    res.status(500).json({ message: "Server error" });
+    const token = jwt.sign(
+      { userId: user._id, role: user.role, name: user.name },
+      JWT_SECRET,
+      { expiresIn: "7d" }
+    );
+
+    res.json({
+      message: "Login successful",
+      token,
+      user: {
+        userId: user._id,
+        role: user.role,
+        name: user.name,
+      },
+    });
+  } catch (error) {
+    res.status(500).json({ message: "Server error", error: error.message });
   }
 };

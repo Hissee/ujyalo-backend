@@ -1,9 +1,13 @@
-const express = require("express");
+import express from "express";
+import { placeOrder, listUserOrders } from "../controllers/orders.controller.js";
+import { verifyToken, requireRole } from "../middlewares/auth.middleware.js";
+
 const router = express.Router();
-const { authenticateToken, requireRole } = require("../middlewares/auth.middleware");
-const { placeOrder, listUserOrders } = require("../controllers/orders.controller");
 
-router.post("/", authenticateToken, requireRole("customer"), placeOrder);
-router.get("/my", authenticateToken, listUserOrders);
+// Only customers can place orders
+router.post("/", verifyToken, requireRole("customer"), placeOrder);
 
-module.exports = router;
+// List orders for logged-in customer
+router.get("/my", verifyToken, requireRole("customer"), listUserOrders);
+
+export default router;
