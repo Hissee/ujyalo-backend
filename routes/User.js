@@ -1,18 +1,38 @@
-const User = require("./models/User");
+const express = require("express");
+const router = express.Router();
+const User = require("../models/User"); // adjust path if needed
+const bcrypt = require("bcryptjs");
 
-// Example: Create new user
-async function createUser() {
-  const newUser = new User({
-    full_name: "Hissee Maharjan",
-    email: "maharjanhissee@gmail.com",
-    password_hash: "hissee@123",
-    phone: "9812345678",
-    role: "farmer",
-    address: "Kathmandu, Nepal",
-  });
+// POST /api/users/register
+router.post("/register", async (req, res) => {
+  try {
+    const { firstName, middleName, lastName, email, phoneNumber, province, city, street, password } = req.body;
 
-  await newUser.save();
-  console.log("User created:", newUser);
-}
+    // Check if user already exists
+    const existingUser = await User.findOne({ email });
+    if (existingUser) {
+      return res.status(400).json({ message: "Email already registered" });
+    }
 
-createUser();
+    // Hash password
+    const hashedPassword = await bcrypt.hash(password, 10);
+
+    // Create new user
+    const newUser = new User({
+      full_name: `${firstName} ${middleName} ${lastName}`.trim(),
+      email,
+      password_hash: hashedPassword,
+      phone: phoneNumber,
+      role: "consumer", // default role
+      address: `${street}, ${city}, ${province}`,
+    });
+
+    await newUser.save();
+    res.status(201).json({ message: "User registered successfully", user: newUser });
+  } catch (error) {
+    console.error("Error creating user:", error);
+    res.status(500).json({ message: "Internal server error" });
+  }
+});
+
+module.exports = router;

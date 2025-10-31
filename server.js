@@ -31,7 +31,7 @@ app.post("/api/signup", async (req, res) => {
       name: [firstName, middleName, lastName].filter(Boolean).join(" "),
       email,
       phone,
-      role: "customer",
+      role,
       address: { province, city, street },
       password: hashedPassword,
       createdAt: new Date(),
