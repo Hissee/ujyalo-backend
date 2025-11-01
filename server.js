@@ -1,6 +1,7 @@
 import express from "express";
 import cors from "cors";
 import dotenv from "dotenv";
+import bcrypt from "bcryptjs";
 import { connectDB, getDB } from "./db.js";
 import { ObjectId } from "mongodb";
 
@@ -18,7 +19,6 @@ app.use(cors());
 
 // Connect MongoDB
 await connectDB();
-connectDB();
 
 // ----------------- Customer Signup -----------------
 app.post("/api/signup", async (req, res) => {
@@ -47,6 +47,7 @@ app.post("/api/signup", async (req, res) => {
 
     res.status(201).json({ message: "Signup successful", userId: result.insertedId });
   } catch (error) {
+    console.error("Signup error:", error); // helpful for debugging
     res.status(500).json({ message: "Server error", error: error.message });
   }
 });
@@ -58,6 +59,4 @@ app.use("/api/orders", ordersRoutes);
 
 // ----------------- Start Server -----------------
 const PORT = process.env.PORT || 3000;
-app.listen(PORT, () =>
-  console.log(`🚀 Server running on http://localhost:${PORT}`)
-);
+app.listen(PORT, () => console.log(`🚀 Server running on http://localhost:${PORT}`));
