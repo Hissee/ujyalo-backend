@@ -1,13 +1,12 @@
 import express from "express";
-import { placeOrder, listUserOrders } from "../controllers/orders.controller.js";
-import { verifyToken, requireRole } from "../middlewares/auth.middleware.js";
+import { placeOrder, listUserOrders, getOrderDetails, cancelOrder } from "../controllers/orders.controller.js";
+import { authenticateToken, requireConsumer } from "../middlewares/auth.middleware.js";
 
 const router = express.Router();
 
-// Only customers can place orders
-router.post("/", verifyToken, requireRole("customer"), placeOrder);
-
-// List orders for logged-in customer
-router.get("/my", verifyToken, requireRole("customer"), listUserOrders);
+router.post("/", authenticateToken, requireConsumer, placeOrder);
+router.get("/my-orders", authenticateToken, requireConsumer, listUserOrders);
+router.get("/:orderId", authenticateToken, requireConsumer, getOrderDetails);
+router.patch("/:orderId/cancel", authenticateToken, requireConsumer, cancelOrder);
 
 export default router;

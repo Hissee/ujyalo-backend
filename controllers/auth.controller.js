@@ -5,8 +5,8 @@ import { getDB } from "../db.js";
 
 const JWT_SECRET = process.env.JWT_SECRET || "change_this_secret";
 
-// -------------------- Customer Signup --------------------
-export const signupCustomer = async (req, res) => {
+// -------------------- Consumer Signup --------------------
+export const signupConsumer = async (req, res) => {
   try {
     const db = getDB();
     const { firstName, middleName, lastName, email, phone, province, city, street, password } = req.body;
@@ -22,14 +22,14 @@ export const signupCustomer = async (req, res) => {
       name: [firstName, middleName, lastName].filter(Boolean).join(" "),
       email,
       phone,
-      role: "customer",
+      role: "consumer",
       address: { province, city, street },
       password: hashedPassword,
       createdAt: new Date(),
       updatedAt: new Date(),
     });
 
-    res.status(201).json({ message: "Customer signup successful", userId: result.insertedId });
+    res.status(201).json({ message: "Consumer signup successful", userId: result.insertedId });
   } catch (error) {
     res.status(500).json({ message: "Server error", error: error.message });
   }

@@ -2,11 +2,12 @@ import express from "express";
 import cors from "cors";
 import dotenv from "dotenv";
 import { connectDB, getDB } from "./db.js";
+
 import { ObjectId } from "mongodb";
 
 // Routes
 import authRoutes from "./routes/auth.routes.js";
-import productsRoutes from "./routes/Products.routes.js";
+import productsRoutes from "./routes/products.routes.js";
 import ordersRoutes from "./routes/orders.routes.js";
 
 dotenv.config();
@@ -20,7 +21,7 @@ app.use(cors());
 await connectDB();
 connectDB();
 
-// ----------------- Customer Signup -----------------
+// ----------------- Consumer Signup -----------------
 app.post("/api/signup", async (req, res) => {
   try {
     const db = getDB();

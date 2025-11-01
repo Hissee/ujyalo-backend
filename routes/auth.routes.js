@@ -1,10 +1,10 @@
 import express from "express";
-import { signupCustomer, signupFarmer, login } from "../controllers/auth.controller.js";
+import { signupConsumer, signupFarmer, login } from "../controllers/auth.controller.js";
 
 const router = express.Router();
 
-// Customer signup
-router.post("/signup/customer", signupCustomer);
+// Consumer signup
+router.post("/signup/consumer", signupConsumer);
 
 // Farmer signup
 router.post("/signup/farmer", signupFarmer);
