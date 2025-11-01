@@ -1,23 +1,14 @@
-// routes/products.routes.js
 import express from "express";
-
-
-import {
-  addProduct,
-  getAllProducts,
-  getProductById,
-} from "../controllers/products.controller.js";
-import { verifyToken } from "../middlewares/auth.middleware.js";
+import { addProduct, getAllProducts, getProductById } from "../controllers/products.controller.js";
+import { verifyToken, requireRole } from "../middlewares/auth.middleware.js";
 
 const router = express.Router();
 
-// Farmer adds a new product
-router.post("/", verifyToken, addProduct);
+// Only farmers can add products
+router.post("/", verifyToken, requireRole("farmer"), addProduct);
 
-// Get all products (public)
+// Public routes
 router.get("/", getAllProducts);
-
-// Get a specific product
 router.get("/:id", getProductById);
 
 export default router;

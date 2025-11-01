@@ -1,23 +1,17 @@
-// db.js
 import { MongoClient } from "mongodb";
 import dotenv from "dotenv";
-
 dotenv.config();
 
 let db;
 
 export const connectDB = async () => {
-  if (db) return db;
-
   try {
     const client = new MongoClient(process.env.MONGODB_URI);
     await client.connect();
-    db = client.db("ujyaloDB");
-    console.log("✅ MongoDB connected successfully");
-    return db;
-  } catch (error) {
-    console.error("❌ MongoDB connection failed:", error.message);
-    process.exit(1);
+    db = client.db("ujyaloDB"); // ← make sure this matches your DB name
+    console.log("✅ MongoDB connected");
+  } catch (err) {
+    console.error("❌ MongoDB connection error:", err);
   }
 };
 

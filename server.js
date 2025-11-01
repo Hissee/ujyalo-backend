@@ -1,16 +1,23 @@
-// server.js
 import express from "express";
-import bcrypt from "bcryptjs";
 import cors from "cors";
-import { connectDB, getDB } from "./db.js";
 import dotenv from "dotenv";
+import { connectDB, getDB } from "./db.js";
+import { ObjectId } from "mongodb";
+
+// Routes
+import authRoutes from "./routes/auth.routes.js";
+import productsRoutes from "./routes/Products.routes.js";
+import ordersRoutes from "./routes/orders.routes.js";
 
 dotenv.config();
+const JWT_SECRET = process.env.JWT_SECRET || "change_this_secret";
 
 const app = express();
 app.use(express.json());
 app.use(cors());
 
+// Connect MongoDB
+await connectDB();
 connectDB();
 
 // ----------------- Customer Signup -----------------
@@ -44,54 +51,13 @@ app.post("/api/signup", async (req, res) => {
   }
 });
 
-// ----------------- Farmer Add Product -----------------
-app.post("/api/products", async (req, res) => {
-  try {
-    const db = getDB();
-    const { farmerId, name, description, category, price, quantity, images } = req.body;
+// ----------------- Routes -----------------
+app.use("/api/auth", authRoutes);
+app.use("/api/products", productsRoutes);
+app.use("/api/orders", ordersRoutes);
 
-    const result = await db.collection("products").insertOne({
-      farmerId,
-      name,
-      description,
-      category,
-      price,
-      quantity,
-      images: images || [],
-      status: "available",
-      createdAt: new Date(),
-      updatedAt: new Date()
-    });
-
-    res.status(201).json({ message: "Product added", productId: result.insertedId });
-  } catch (error) {
-    res.status(500).json({ message: "Server error", error: error.message });
-  }
-});
-
-// ----------------- Place Order -----------------
-app.post("/api/orders", async (req, res) => {
-  try {
-    const db = getDB();
-    const { customerId, products, deliveryAddress } = req.body;
-
-    const totalAmount = products.reduce((sum, p) => sum + p.price * p.quantity, 0);
-
-    const result = await db.collection("orders").insertOne({
-      customerId,
-      products,
-      totalAmount,
-      status: "pending",
-      deliveryAddress,
-      createdAt: new Date(),
-      updatedAt: new Date()
-    });
-
-    res.status(201).json({ message: "Order placed", orderId: result.insertedId });
-  } catch (error) {
-    res.status(500).json({ message: "Server error", error: error.message });
-  }
-});
-
+// ----------------- Start Server -----------------
 const PORT = process.env.PORT || 3000;
-app.listen(PORT, () => console.log(`🚀 Server running on port ${PORT}`));
+app.listen(PORT, () =>
+  console.log(`🚀 Server running on http://localhost:${PORT}`)
+);
