@@ -17,7 +17,7 @@ connectDB();
 app.post("/api/signup", async (req, res) => {
   try {
     const db = getDB();
-    const { firstName, middleName, lastName, email, phone, province, city, street, password } = req.body;
+    const { firstName, middleName, lastName, email, phone, province, city, street, password, role } = req.body;
 
     const existing = await db.collection("users").findOne({ email });
     if (existing) return res.status(400).json({ message: "Email already registered" });
