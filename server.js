@@ -7,7 +7,7 @@ import { ObjectId } from "mongodb";
 
 // Routes
 import authRoutes from "./routes/auth.routes.js";
-import productsRoutes from "./routes/Products.routes.js";
+import productsRoutes from "./routes/products.routes.js";
 import ordersRoutes from "./routes/orders.routes.js";
 
 dotenv.config();

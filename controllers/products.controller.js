@@ -6,7 +6,7 @@ import { ObjectId } from "mongodb";
 export const addProduct = async (req, res) => {
   try {
     const db = getDB();
-    const { name, description, category, price, quantity, images } = req.body;
+    const { name, description, category, price, quantity, images, harvestDate, organic } = req.body;
 
     // Input validation
     if (!name || !price || !quantity) {
@@ -16,7 +16,7 @@ export const addProduct = async (req, res) => {
       return res.status(400).json({ message: "Price and quantity must be greater than zero" });
     }
 
-    const result = await db.collection("products").insertOne({
+    const productData = {
       farmerId: req.user.userId, // updated to match JWT payload
       name,
       description: description || "",
@@ -27,7 +27,17 @@ export const addProduct = async (req, res) => {
       status: "available",
       createdAt: new Date(),
       updatedAt: new Date(),
-    });
+    };
+
+    // Add optional fields if provided
+    if (harvestDate) {
+      productData.harvestDate = harvestDate;
+    }
+    if (organic !== undefined) {
+      productData.organic = organic;
+    }
+
+    const result = await db.collection("products").insertOne(productData);
     
       console.log("Product inserted:", result.insertedId);
     
@@ -62,17 +72,34 @@ export const getProductById = async (req, res) => {
     const db = getDB();
     const { id } = req.params;
 
-    if (!ObjectId.isValid(id)) return res.status(400).json({ message: "Invalid product ID" });
+    console.log('Fetching product with ID:', id);
+
+    if (!ObjectId.isValid(id)) {
+      console.log('Invalid product ID format:', id);
+      return res.status(400).json({ message: "Invalid product ID" });
+    }
 
     const product = await db.collection("products").findOne({
       _id: new ObjectId(id),
       status: "available"
     });
 
-    if (!product) return res.status(404).json({ message: "Product not found" });
+    if (!product) {
+      console.log('Product not found or not available:', id);
+      // Check if product exists but has different status
+      const productAnyStatus = await db.collection("products").findOne({
+        _id: new ObjectId(id)
+      });
+      if (productAnyStatus) {
+        console.log('Product exists but status is:', productAnyStatus.status);
+      }
+      return res.status(404).json({ message: "Product not found or not available" });
+    }
 
+    console.log('Product found:', product.name);
     res.json(product);
   } catch (error) {
+    console.error('Error fetching product:', error);
     res.status(500).json({ message: "Server error", error: error.message });
   }
 };
