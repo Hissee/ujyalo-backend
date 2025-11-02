@@ -10,22 +10,32 @@ export const placeOrder = async (req, res) => {
     if (!Array.isArray(products) || products.length === 0)
       return res.status(400).json({ message: "No products provided" });
 
-    const productIds = products.map((p) => ObjectId(p.productId));
+    // Validate product IDs are valid ObjectIds
+    const invalidProductIds = products.filter(p => !ObjectId.isValid(p.productId));
+    if (invalidProductIds.length > 0) {
+      return res.status(400).json({ 
+        message: "Invalid product ID format", 
+        invalidIds: invalidProductIds.map(p => p.productId)
+      });
+    }
+
+    const productIds = products.map((p) => new ObjectId(p.productId));
     const dbProducts = await db.collection("products").find({ _id: { $in: productIds } }).toArray();
 
     let total = 0;
     const orderProducts = [];
 
     for (const p of products) {
-      const dbp = dbProducts.find((x) => x._id.equals(ObjectId(p.productId)));
+      const productObjectId = new ObjectId(p.productId);
+      const dbp = dbProducts.find((x) => x._id.equals(productObjectId));
       if (!dbp) return res.status(400).json({ message: `Product not found: ${p.productId}` });
-      if (dbp.quantity < p.quantity) return res.status(400).json({ message: `Insufficient stock for ${dbp.name}` });
+      if (dbp.quantity < p.quantity) return res.status(400).json({ message: `Insufficient stock for ${dbp.name}. Available: ${dbp.quantity}, Requested: ${p.quantity}` });
       total += dbp.price * p.quantity;
       orderProducts.push({ productId: dbp._id, quantity: p.quantity, price: dbp.price });
     }
 
     const order = {
-      customerId: ObjectId(req.user.userId),
+      customerId: new ObjectId(req.user.userId),
       products: orderProducts,
       totalAmount: total,
       status: "pending",
@@ -54,7 +64,17 @@ export const placeOrder = async (req, res) => {
     });
   } catch (err) {
     console.error("Place order error:", err);
-    res.status(500).json({ message: "Server error", error: err.message });
+    console.error("Error stack:", err.stack);
+    console.error("Request body:", req.body);
+    console.error("User:", req.user);
+    
+    // Provide more detailed error message
+    const errorMessage = err.message || "Unknown error occurred";
+    res.status(500).json({ 
+      message: "Server error", 
+      error: errorMessage,
+      details: process.env.NODE_ENV === 'development' ? err.stack : undefined
+    });
   }
 };
 
@@ -62,7 +82,7 @@ export const placeOrder = async (req, res) => {
 export const listUserOrders = async (req, res) => {
   try {
     const db = getDB();
-    const orders = await db.collection("orders").find({ customerId: ObjectId(req.user.userId) }).toArray();
+    const orders = await db.collection("orders").find({ customerId: new ObjectId(req.user.userId) }).toArray();
     res.json(orders);
   } catch (err) {
     console.error("List orders error:", err);
