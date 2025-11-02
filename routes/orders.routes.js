@@ -4,13 +4,13 @@ import { verifyToken, requireRole } from "../middlewares/auth.middleware.js";
 
 const router = express.Router();
 
-// Only customers can place orders
-router.post("/", verifyToken, requireRole("customer"), placeOrder);
+// Only consumers/customers can place orders
+router.post("/", verifyToken, requireRole("consumer", "customer"), placeOrder);
 
-// List orders for logged-in customer
-router.get("/my", verifyToken, requireRole("customer"), listUserOrders);
+// List orders for logged-in consumer/customer
+router.get("/my", verifyToken, requireRole("consumer", "customer"), listUserOrders);
 
 // Verify Khalti payment
-router.post("/verify-khalti", verifyToken, requireRole("customer"), verifyKhaltiPayment);
+router.post("/verify-khalti", verifyToken, requireRole("consumer", "customer"), verifyKhaltiPayment);
 
 export default router;
