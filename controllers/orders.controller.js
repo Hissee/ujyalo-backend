@@ -1,5 +1,6 @@
 import { getDB } from "../db.js";
 import { ObjectId } from "mongodb";
+import { createNotification } from "./notifications.controller.js";
 
 // Place Order
 export const placeOrder = async (req, res) => {
@@ -31,7 +32,14 @@ export const placeOrder = async (req, res) => {
       if (!dbp) return res.status(400).json({ message: `Product not found: ${p.productId}` });
       if (dbp.quantity < p.quantity) return res.status(400).json({ message: `Insufficient stock for ${dbp.name}. Available: ${dbp.quantity}, Requested: ${p.quantity}` });
       total += dbp.price * p.quantity;
-      orderProducts.push({ productId: dbp._id, quantity: p.quantity, price: dbp.price });
+      // Store product snapshot (name, image) in order so it can be displayed even if product is deleted later
+      orderProducts.push({ 
+        productId: dbp._id, 
+        quantity: p.quantity, 
+        price: dbp.price,
+        productName: dbp.name || 'Unknown Product',
+        productImage: (dbp.images && dbp.images.length > 0) ? dbp.images[0] : (dbp.image || '')
+      });
     }
 
     const order = {
@@ -47,6 +55,7 @@ export const placeOrder = async (req, res) => {
     };
 
     const result = await db.collection("orders").insertOne(order);
+    const orderId = result.insertedId.toString();
 
     // Only reduce product quantity for Cash on Delivery orders immediately
     // For Khalti, wait for payment verification
@@ -57,9 +66,47 @@ export const placeOrder = async (req, res) => {
       }
     }
 
+    // Send notification to consumer: Order placed successfully
+    try {
+      await createNotification(
+        req.user.userId,
+        'order_placed',
+        'Order Placed Successfully',
+        `Your order has been placed successfully. Order ID: ${orderId}`,
+        orderId
+      );
+    } catch (notifError) {
+      console.error("Error creating notification:", notifError);
+      // Don't fail the order if notification fails
+    }
+
+    // Send notifications to farmers whose products are in the order
+    try {
+      const farmerIds = new Set();
+      for (const op of orderProducts) {
+        const product = dbProducts.find(p => p._id.equals(op.productId));
+        if (product && product.farmerId) {
+          farmerIds.add(product.farmerId.toString());
+        }
+      }
+      
+      for (const farmerId of farmerIds) {
+        await createNotification(
+          farmerId,
+          'order_placed',
+          'New Order Received',
+          `A new order has been placed for your products. Order ID: ${orderId}`,
+          orderId
+        );
+      }
+    } catch (notifError) {
+      console.error("Error creating farmer notifications:", notifError);
+      // Don't fail the order if notification fails
+    }
+
     res.status(201).json({ 
       message: "Order placed", 
-      orderId: result.insertedId.toString(),
+      orderId: orderId,
       paymentMethod: order.paymentMethod
     });
   } catch (err) {
@@ -139,7 +186,7 @@ export const verifyKhaltiPayment = async (req, res) => {
       });
     }
 
-    // Update order status
+    // Update order payment status
     await db.collection("orders").updateOne(
       { _id: new ObjectId(orderId) },
       {
@@ -163,6 +210,47 @@ export const verifyKhaltiPayment = async (req, res) => {
         { _id: p.productId, quantity: { $lte: 0 } }, 
         { $set: { status: "sold out" } }
       );
+    }
+
+    // Send notifications
+    try {
+      // Consumer notification: Payment completed and order confirmed
+      await createNotification(
+        order.customerId.toString(),
+        'order_payment_completed',
+        'Payment Completed',
+        `Your payment has been completed and order has been confirmed. Order ID: ${orderId}`,
+        orderId
+      );
+
+      await createNotification(
+        order.customerId.toString(),
+        'order_confirmed',
+        'Order Confirmed',
+        `Your order has been confirmed. Order ID: ${orderId}`,
+        orderId
+      );
+
+      // Notify farmers
+      const farmerIds = new Set();
+      for (const op of order.products) {
+        const product = await db.collection("products").findOne({ _id: op.productId });
+        if (product && product.farmerId) {
+          farmerIds.add(product.farmerId.toString());
+        }
+      }
+      
+      for (const farmerId of farmerIds) {
+        await createNotification(
+          farmerId,
+          'order_confirmed',
+          'Order Confirmed',
+          `Order ${orderId} has been confirmed and payment completed.`,
+          orderId
+        );
+      }
+    } catch (notifError) {
+      console.error("Error creating notifications:", notifError);
     }
 
     res.json({

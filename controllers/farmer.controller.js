@@ -1,4 +1,5 @@
 import { getDB } from "../db.js";
+import { createNotification } from "./notifications.controller.js";
 import { ObjectId } from "mongodb";
 
 // Get Farmer's Products
@@ -244,6 +245,57 @@ export const updateOrderStatus = async (req, res) => {
       }
     );
 
+    // Send notifications based on status
+    try {
+      const customerId = order.customerId.toString();
+      
+      if (status === 'confirmed') {
+        await createNotification(
+          customerId,
+          'order_confirmed',
+          'Order Confirmed',
+          `Your order has been confirmed. Order ID: ${orderId}`,
+          orderId
+        );
+      } else if (status === 'processing') {
+        await createNotification(
+          customerId,
+          'order_processing',
+          'Order Being Processed',
+          `Your order is being processed. Order ID: ${orderId}`,
+          orderId
+        );
+      } else if (status === 'shipped') {
+        await createNotification(
+          customerId,
+          'order_loaded',
+          'Product Loaded',
+          `Your order has been loaded and is on its way. Order ID: ${orderId}`,
+          orderId
+        );
+      } else if (status === 'delivered') {
+        await createNotification(
+          customerId,
+          'order_delivered',
+          'Order Delivered',
+          `Your order has been delivered successfully. Order ID: ${orderId}`,
+          orderId
+        );
+        
+        // Also notify farmer
+        await createNotification(
+          farmerId,
+          'order_delivered',
+          'Order Delivered',
+          `Order ${orderId} has been delivered successfully.`,
+          orderId
+        );
+      }
+    } catch (notifError) {
+      console.error("Error creating notifications:", notifError);
+      // Don't fail the status update if notification fails
+    }
+
     res.json({
       message: "Order status updated successfully",
       orderId: orderId,
@@ -274,11 +326,10 @@ export const getFarmerRevenue = async (req, res) => {
 
     const farmerProductIds = farmerProducts.map(p => p._id);
 
-    // Get orders within date range
+    // Get orders within date range (include all orders regardless of payment status to match overview)
     const orders = await db.collection("orders")
       .find({
-        createdAt: { $gte: startDate },
-        paymentStatus: "completed"
+        createdAt: { $gte: startDate }
       })
       .toArray();
 

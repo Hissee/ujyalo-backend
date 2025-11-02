@@ -10,6 +10,7 @@ import authRoutes from "./routes/auth.routes.js";
 import productsRoutes from "./routes/products.routes.js";
 import ordersRoutes from "./routes/orders.routes.js";
 import farmerRoutes from "./routes/farmer.routes.js";
+import notificationsRoutes from "./routes/notifications.routes.js";
 
 dotenv.config();
 const JWT_SECRET = process.env.JWT_SECRET || "change_this_secret";
@@ -58,6 +59,7 @@ app.use("/api/auth", authRoutes);
 app.use("/api/products", productsRoutes);
 app.use("/api/orders", ordersRoutes);
 app.use("/api/farmer", farmerRoutes);
+app.use("/api/notifications", notificationsRoutes);
 
 // ----------------- Start Server -----------------
 const PORT = process.env.PORT || 3000;
