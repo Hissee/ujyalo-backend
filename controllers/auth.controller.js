@@ -3,6 +3,7 @@ import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
 import { getDB } from "../db.js";
 import { ObjectId } from "mongodb";
+import { generateVerificationToken, sendVerificationEmail } from "../services/email.service.js";
 
 const JWT_SECRET = process.env.JWT_SECRET || "change_this_secret";
 
@@ -59,13 +60,21 @@ export const signupConsumer = async (req, res) => {
     // Hash password
     const hashedPassword = await bcrypt.hash(password, 10);
 
+    // Generate email verification token
+    const emailVerificationToken = generateVerificationToken();
+    const emailVerificationTokenExpires = new Date();
+    emailVerificationTokenExpires.setHours(emailVerificationTokenExpires.getHours() + 24); // 24 hours
+
+    const userName = [firstName, middleName, lastName].filter(Boolean).join(" ").trim();
+    const userEmail = email.toLowerCase().trim();
+
     // Create user
     const result = await db.collection("users").insertOne({
       firstName: firstName.trim(),
       middleName: middleName ? middleName.trim() : "",
       lastName: lastName ? lastName.trim() : "",
-      name: [firstName, middleName, lastName].filter(Boolean).join(" ").trim(),
-      email: email.toLowerCase().trim(),
+      name: userName,
+      email: userEmail,
       phone: phone.trim(),
       role: "consumer", // Changed from "customer" to "consumer"
       address: {
@@ -74,26 +83,39 @@ export const signupConsumer = async (req, res) => {
         street: street ? street.trim() : ""
       },
       password: hashedPassword,
+      emailVerified: false,
+      emailVerificationToken: emailVerificationToken,
+      emailVerificationTokenExpires: emailVerificationTokenExpires,
       createdAt: new Date(),
       updatedAt: new Date(),
     });
 
-    // Generate token for immediate login
+    // Send verification email
+    try {
+      await sendVerificationEmail(userEmail, userName, emailVerificationToken);
+    } catch (emailError) {
+      console.error("Failed to send verification email:", emailError);
+      // Continue with signup even if email fails
+    }
+
+    // Generate token for immediate login (but user needs to verify email)
     const token = jwt.sign(
-      { userId: result.insertedId, role: "consumer", name: [firstName, middleName, lastName].filter(Boolean).join(" ").trim() },
+      { userId: result.insertedId, role: "consumer", name: userName },
       JWT_SECRET,
       { expiresIn: "7d" }
     );
 
     res.status(201).json({
-      message: "Consumer signup successful",
+      message: "Consumer signup successful. Please check your email to verify your account.",
       token,
       user: {
         userId: result.insertedId,
         role: "consumer",
-        name: [firstName, middleName, lastName].filter(Boolean).join(" ").trim(),
-        email: email.toLowerCase().trim()
-      }
+        name: userName,
+        email: userEmail,
+        emailVerified: false
+      },
+      requiresEmailVerification: true
     });
   } catch (error) {
     console.error("Consumer signup error:", error);
@@ -122,13 +144,21 @@ export const signupFarmer = async (req, res) => {
     // Hash password
     const hashedPassword = await bcrypt.hash(password, 10);
 
+    // Generate email verification token
+    const emailVerificationToken = generateVerificationToken();
+    const emailVerificationTokenExpires = new Date();
+    emailVerificationTokenExpires.setHours(emailVerificationTokenExpires.getHours() + 24); // 24 hours
+
+    const userName = [firstName, middleName, lastName].filter(Boolean).join(" ").trim();
+    const userEmail = email.toLowerCase().trim();
+
     // Create farmer
     const result = await db.collection("users").insertOne({
       firstName: firstName.trim(),
       middleName: middleName ? middleName.trim() : "",
       lastName: lastName ? lastName.trim() : "",
-      name: [firstName, middleName, lastName].filter(Boolean).join(" ").trim(),
-      email: email.toLowerCase().trim(),
+      name: userName,
+      email: userEmail,
       phone: phone.trim(),
       role: "farmer",
       address: {
@@ -137,26 +167,39 @@ export const signupFarmer = async (req, res) => {
         street: street ? street.trim() : ""
       },
       password: hashedPassword,
+      emailVerified: false,
+      emailVerificationToken: emailVerificationToken,
+      emailVerificationTokenExpires: emailVerificationTokenExpires,
       createdAt: new Date(),
       updatedAt: new Date(),
     });
 
-    // Generate token for immediate login
+    // Send verification email
+    try {
+      await sendVerificationEmail(userEmail, userName, emailVerificationToken);
+    } catch (emailError) {
+      console.error("Failed to send verification email:", emailError);
+      // Continue with signup even if email fails
+    }
+
+    // Generate token for immediate login (but user needs to verify email)
     const token = jwt.sign(
-      { userId: result.insertedId, role: "farmer", name: [firstName, middleName, lastName].filter(Boolean).join(" ").trim() },
+      { userId: result.insertedId, role: "farmer", name: userName },
       JWT_SECRET,
       { expiresIn: "7d" }
     );
 
     res.status(201).json({
-      message: "Farmer signup successful",
+      message: "Farmer signup successful. Please check your email to verify your account.",
       token,
       user: {
         userId: result.insertedId,
         role: "farmer",
-        name: [firstName, middleName, lastName].filter(Boolean).join(" ").trim(),
-        email: email.toLowerCase().trim()
-      }
+        name: userName,
+        email: userEmail,
+        emailVerified: false
+      },
+      requiresEmailVerification: true
     });
   } catch (error) {
     console.error("Farmer signup error:", error);
@@ -192,6 +235,15 @@ export const login = async (req, res) => {
       return res.status(401).json({ message: "Invalid email or password" });
     }
 
+    // Check if email is verified
+    if (!user.emailVerified) {
+      return res.status(403).json({ 
+        message: "Please verify your email address before logging in. Check your inbox for the verification link.",
+        requiresEmailVerification: true,
+        email: user.email
+      });
+    }
+
     // Generate JWT token
     const token = jwt.sign(
       {
@@ -214,7 +266,8 @@ export const login = async (req, res) => {
         name: user.name,
         email: user.email,
         phone: user.phone,
-        address: user.address
+        address: user.address,
+        emailVerified: user.emailVerified || false
       }
     });
   } catch (error) {
@@ -399,6 +452,127 @@ export const verifyToken = async (req, res) => {
     });
   } catch (error) {
     console.error("Verify token error:", error);
+    res.status(500).json({ message: "Server error", error: error.message });
+  }
+};
+
+// -------------------- Verify Email --------------------
+export const verifyEmail = async (req, res) => {
+  try {
+    const db = getDB();
+    const { token, email } = req.body;
+
+    // Validation
+    if (!token || !email) {
+      return res.status(400).json({ message: "Token and email are required" });
+    }
+
+    // Find user by email
+    const user = await db.collection("users").findOne({ 
+      email: email.toLowerCase().trim(),
+      emailVerificationToken: token
+    });
+
+    if (!user) {
+      return res.status(400).json({ message: "Invalid verification token or email" });
+    }
+
+    // Check if already verified
+    if (user.emailVerified) {
+      return res.status(400).json({ message: "Email already verified" });
+    }
+
+    // Check if token expired
+    if (user.emailVerificationTokenExpires && new Date() > new Date(user.emailVerificationTokenExpires)) {
+      return res.status(400).json({ message: "Verification token has expired. Please request a new one." });
+    }
+
+    // Update user to verified
+    await db.collection("users").updateOne(
+      { _id: user._id },
+      {
+        $set: {
+          emailVerified: true,
+          updatedAt: new Date()
+        },
+        $unset: {
+          emailVerificationToken: "",
+          emailVerificationTokenExpires: ""
+        }
+      }
+    );
+
+    res.json({
+      message: "Email verified successfully. You can now log in.",
+      verified: true
+    });
+  } catch (error) {
+    console.error("Email verification error:", error);
+    res.status(500).json({ message: "Server error", error: error.message });
+  }
+};
+
+// -------------------- Resend Verification Email --------------------
+export const resendVerificationEmail = async (req, res) => {
+  try {
+    const db = getDB();
+    const { email } = req.body;
+
+    // Validation
+    if (!email) {
+      return res.status(400).json({ message: "Email is required" });
+    }
+
+    if (!validateEmail(email)) {
+      return res.status(400).json({ message: "Invalid email format" });
+    }
+
+    // Find user by email
+    const user = await db.collection("users").findOne({ email: email.toLowerCase().trim() });
+
+    if (!user) {
+      // Don't reveal if email exists for security
+      return res.json({ 
+        message: "If an account with this email exists, a verification email has been sent." 
+      });
+    }
+
+    // Check if already verified
+    if (user.emailVerified) {
+      return res.status(400).json({ message: "Email is already verified" });
+    }
+
+    // Generate new verification token
+    const emailVerificationToken = generateVerificationToken();
+    const emailVerificationTokenExpires = new Date();
+    emailVerificationTokenExpires.setHours(emailVerificationTokenExpires.getHours() + 24); // 24 hours
+
+    // Update user with new token
+    await db.collection("users").updateOne(
+      { _id: user._id },
+      {
+        $set: {
+          emailVerificationToken: emailVerificationToken,
+          emailVerificationTokenExpires: emailVerificationTokenExpires,
+          updatedAt: new Date()
+        }
+      }
+    );
+
+    // Send verification email
+    try {
+      await sendVerificationEmail(user.email, user.name, emailVerificationToken);
+      res.json({ 
+        message: "Verification email sent successfully. Please check your inbox." 
+      });
+    } catch (emailError) {
+      console.error("Failed to send verification email:", emailError);
+      res.status(500).json({ 
+        message: "Failed to send verification email. Please try again later." 
+      });
+    }
+  } catch (error) {
+    console.error("Resend verification email error:", error);
     res.status(500).json({ message: "Server error", error: error.message });
   }
 };
