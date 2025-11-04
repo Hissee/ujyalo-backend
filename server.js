@@ -11,6 +11,7 @@ import productsRoutes from "./routes/products.routes.js";
 import ordersRoutes from "./routes/orders.routes.js";
 import farmerRoutes from "./routes/farmer.routes.js";
 import notificationsRoutes from "./routes/notifications.routes.js";
+import { initializePricePrediction } from "./services/pricePrediction.service.js";
 
 dotenv.config();
 const JWT_SECRET = process.env.JWT_SECRET || "change_this_secret";
@@ -21,6 +22,9 @@ app.use(cors());
 
 // Connect MongoDB
 await connectDB();
+
+// Initialize price prediction models
+await initializePricePrediction();
 
 // ----------------- Customer Signup -----------------
 app.post("/api/signup", async (req, res) => {
