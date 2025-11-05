@@ -245,55 +245,78 @@ export const updateOrderStatus = async (req, res) => {
       }
     );
 
-    // Send notifications based on status
+    // Send email and notifications
     try {
-      const customerId = order.customerId.toString();
-      
-      if (status === 'confirmed') {
+      // Get customer details
+      const customer = await db.collection("users").findOne(
+        { _id: order.customerId },
+        { projection: { name: 1, email: 1 } }
+      );
+
+      // Get farmer details
+      const farmer = await db.collection("users").findOne(
+        { _id: new ObjectId(farmerId) },
+        { projection: { name: 1, email: 1 } }
+      );
+
+      // Get all admin users for notifications
+      const admins = await db.collection("users")
+        .find({ role: "admin" }, { projection: { _id: 1 } })
+        .toArray();
+
+      // Send email and notification to consumer
+      if (customer) {
+        try {
+          const { sendOrderStatusUpdateEmail } = await import("../services/email.service.js");
+          await sendOrderStatusUpdateEmail(customer.email, customer.name, orderId, status, "farmer");
+        } catch (emailError) {
+          console.error("Error sending email to consumer:", emailError);
+        }
+
         await createNotification(
-          customerId,
-          'order_confirmed',
-          'Order Confirmed',
-          `Your order has been confirmed. Order ID: ${orderId}`,
-          orderId
-        );
-      } else if (status === 'processing') {
-        await createNotification(
-          customerId,
-          'order_processing',
-          'Order Being Processed',
-          `Your order is being processed. Order ID: ${orderId}`,
-          orderId
-        );
-      } else if (status === 'shipped') {
-        await createNotification(
-          customerId,
-          'order_loaded',
-          'Product Loaded',
-          `Your order has been loaded and is on its way. Order ID: ${orderId}`,
-          orderId
-        );
-      } else if (status === 'delivered') {
-        await createNotification(
-          customerId,
-          'order_delivered',
-          'Order Delivered',
-          `Your order has been delivered successfully. Order ID: ${orderId}`,
-          orderId
-        );
-        
-        // Also notify farmer
-        await createNotification(
-          farmerId,
-          'order_delivered',
-          'Order Delivered',
-          `Order ${orderId} has been delivered successfully.`,
+          order.customerId.toString(),
+          'order_status_updated',
+          `Order Status Updated to ${status.charAt(0).toUpperCase() + status.slice(1)}`,
+          `Your order status has been updated to ${status} by the farmer. Order ID: ${orderId}`,
           orderId
         );
       }
+
+      // Send email and notification to farmer
+      if (farmer) {
+        try {
+          const { sendOrderStatusUpdateEmail } = await import("../services/email.service.js");
+          await sendOrderStatusUpdateEmail(farmer.email, farmer.name, orderId, status, "farmer");
+        } catch (emailError) {
+          console.error("Error sending email to farmer:", emailError);
+        }
+
+        await createNotification(
+          farmerId,
+          'order_status_updated',
+          `Order Status Updated to ${status.charAt(0).toUpperCase() + status.slice(1)}`,
+          `You have updated order ${orderId} status to ${status}.`,
+          orderId
+        );
+      }
+
+      // Send notification to all admins
+      for (const admin of admins) {
+        try {
+          await createNotification(
+            admin._id.toString(),
+            'order_status_updated',
+            'Order Status Updated by Farmer',
+            `Order ${orderId} status has been updated to ${status} by farmer ${farmer?.name || 'Unknown'}.`,
+            orderId
+          );
+        } catch (notifError) {
+          console.error(`Error notifying admin ${admin._id}:`, notifError);
+        }
+      }
     } catch (notifError) {
-      console.error("Error creating notifications:", notifError);
-      // Don't fail the status update if notification fails
+      console.error("Error sending notifications/emails:", notifError);
+      // Don't fail the status update if notification/email fails
     }
 
     res.json({

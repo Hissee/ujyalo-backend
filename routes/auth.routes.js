@@ -15,6 +15,8 @@ import {
   verifyOTP,
   resendOTP,
   resendPasswordResetOTP,
+  requestPasswordChangeOTP,
+  changePasswordWithOTP,
   deactivateAccount,
   deleteAccount
 } from "../controllers/auth.controller.js";
@@ -38,7 +40,9 @@ router.get("/verify", verifyToken, verifyTokenEndpoint); // Verify token validit
 
 // Protected routes - require authentication
 router.get("/me", verifyToken, getCurrentUser); // Get current user profile
-router.put("/password", verifyToken, updatePassword); // Update password
+router.put("/password", verifyToken, updatePassword); // Update password (legacy - with current password)
+router.post("/password/request-otp", verifyToken, requestPasswordChangeOTP); // Request password change OTP
+router.post("/password/change-with-otp", verifyToken, changePasswordWithOTP); // Change password with OTP
 router.put("/profile", verifyToken, updateProfile); // Update profile
 router.post("/deactivate", verifyToken, deactivateAccount); // Deactivate account
 router.post("/delete-account", verifyToken, deleteAccount); // Delete account

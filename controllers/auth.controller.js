@@ -242,8 +242,8 @@ export const login = async (req, res) => {
       );
     }
 
-    // Check if email is verified
-    if (!user.emailVerified) {
+    // Check if email is verified (skip for admin users)
+    if (!user.emailVerified && user.role !== "admin") {
       return res.status(403).json({ 
         message: "Please verify your email address before logging in. Check your inbox for the verification link.",
         requiresEmailVerification: true,
@@ -314,6 +314,137 @@ export const getCurrentUser = async (req, res) => {
     });
   } catch (error) {
     console.error("Get current user error:", error);
+    res.status(500).json({ message: "Server error", error: error.message });
+  }
+};
+
+// -------------------- Request Password Change OTP (Authenticated) --------------------
+export const requestPasswordChangeOTP = async (req, res) => {
+  try {
+    const db = getDB();
+    const userId = req.user.userId;
+
+    // Get user
+    const user = await db.collection("users").findOne({ _id: new ObjectId(userId) });
+
+    if (!user) {
+      return res.status(404).json({ message: "User not found" });
+    }
+
+    // Generate OTP for password change
+    const otp = generateOTP();
+    const otpExpires = new Date();
+    otpExpires.setMinutes(otpExpires.getMinutes() + 10); // 10 minutes expiry
+
+    // Update user with password change OTP
+    await db.collection("users").updateOne(
+      { _id: new ObjectId(userId) },
+      {
+        $set: {
+          passwordChangeOTP: otp,
+          passwordChangeOTPExpires: otpExpires,
+          updatedAt: new Date()
+        }
+      }
+    );
+
+    // Send password change OTP email
+    try {
+      await sendPasswordResetOTPEmail(user.email, user.name, otp);
+      res.json({ 
+        message: "Password change OTP has been sent to your email.",
+        email: user.email
+      });
+    } catch (emailError) {
+      console.error("Failed to send password change OTP email:", emailError);
+      // Clean up OTP if email fails
+      await db.collection("users").updateOne(
+        { _id: new ObjectId(userId) },
+        {
+          $unset: {
+            passwordChangeOTP: "",
+            passwordChangeOTPExpires: ""
+          }
+        }
+      );
+      res.status(500).json({ 
+        message: "Failed to send OTP. Please try again later." 
+      });
+    }
+  } catch (error) {
+    console.error("Request password change OTP error:", error);
+    res.status(500).json({ message: "Server error", error: error.message });
+  }
+};
+
+// -------------------- Change Password with OTP (Authenticated) --------------------
+export const changePasswordWithOTP = async (req, res) => {
+  try {
+    const db = getDB();
+    const { otp, newPassword } = req.body;
+    const userId = req.user.userId;
+
+    // Validation
+    if (!otp || !newPassword) {
+      return res.status(400).json({ message: "OTP and new password are required" });
+    }
+
+    if (!validatePassword(newPassword)) {
+      return res.status(400).json({ message: "New password must be at least 6 characters" });
+    }
+
+    // Get user
+    const user = await db.collection("users").findOne({ _id: new ObjectId(userId) });
+
+    if (!user) {
+      return res.status(404).json({ message: "User not found" });
+    }
+
+    // Check if OTP exists
+    if (!user.passwordChangeOTP) {
+      return res.status(400).json({ message: "No password change OTP found. Please request a new OTP." });
+    }
+
+    // Check if OTP expired
+    if (user.passwordChangeOTPExpires && new Date() > new Date(user.passwordChangeOTPExpires)) {
+      await db.collection("users").updateOne(
+        { _id: new ObjectId(userId) },
+        {
+          $unset: {
+            passwordChangeOTP: "",
+            passwordChangeOTPExpires: ""
+          }
+        }
+      );
+      return res.status(400).json({ message: "OTP has expired. Please request a new one." });
+    }
+
+    // Verify OTP
+    if (user.passwordChangeOTP !== otp) {
+      return res.status(400).json({ message: "Invalid OTP" });
+    }
+
+    // Hash new password
+    const hashedPassword = await bcrypt.hash(newPassword, 10);
+
+    // Update password and remove OTP
+    await db.collection("users").updateOne(
+      { _id: new ObjectId(userId) },
+      {
+        $set: {
+          password: hashedPassword,
+          updatedAt: new Date()
+        },
+        $unset: {
+          passwordChangeOTP: "",
+          passwordChangeOTPExpires: ""
+        }
+      }
+    );
+
+    res.json({ message: "Password changed successfully" });
+  } catch (error) {
+    console.error("Change password with OTP error:", error);
     res.status(500).json({ message: "Server error", error: error.message });
   }
 };

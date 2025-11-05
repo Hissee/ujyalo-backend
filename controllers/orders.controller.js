@@ -66,42 +66,115 @@ export const placeOrder = async (req, res) => {
       }
     }
 
-    // Send notification to consumer: Order placed successfully
+    // Send email and notifications
     try {
-      await createNotification(
-        req.user.userId,
-        'order_placed',
-        'Order Placed Successfully',
-        `Your order has been placed successfully. Order ID: ${orderId}`,
-        orderId
-      );
-    } catch (notifError) {
-      console.error("Error creating notification:", notifError);
-      // Don't fail the order if notification fails
-    }
+      const { sendOrderPlacedEmailToConsumer, sendOrderPlacedEmailToFarmer } = await import("../services/email.service.js");
 
-    // Send notifications to farmers whose products are in the order
-    try {
-      const farmerIds = new Set();
-      for (const op of orderProducts) {
-        const product = dbProducts.find(p => p._id.equals(op.productId));
-        if (product && product.farmerId) {
-          farmerIds.add(product.farmerId.toString());
+      // Get customer details
+      const customer = await db.collection("users").findOne(
+        { _id: new ObjectId(req.user.userId) },
+        { projection: { name: 1, email: 1 } }
+      );
+
+      // Send email and notification to consumer
+      if (customer) {
+        try {
+          await sendOrderPlacedEmailToConsumer(
+            customer.email,
+            customer.name,
+            orderId,
+            total,
+            orderProducts,
+            paymentMethod || "cash_on_delivery"
+          );
+        } catch (emailError) {
+          console.error("Error sending email to consumer:", emailError);
         }
-      }
-      
-      for (const farmerId of farmerIds) {
+
         await createNotification(
-          farmerId,
+          req.user.userId,
           'order_placed',
-          'New Order Received',
-          `A new order has been placed for your products. Order ID: ${orderId}`,
+          'Order Placed Successfully',
+          `Your order has been placed successfully. Order ID: ${orderId}`,
           orderId
         );
       }
+
+      // Get all farmers involved in this order
+      const farmerIds = new Set();
+      const farmerProductMap = new Map(); // Map farmerId to their products in this order
+      
+      for (const op of orderProducts) {
+        const product = dbProducts.find(p => p._id.equals(op.productId));
+        if (product && product.farmerId) {
+          const farmerIdStr = product.farmerId.toString();
+          farmerIds.add(farmerIdStr);
+          
+          if (!farmerProductMap.has(farmerIdStr)) {
+            farmerProductMap.set(farmerIdStr, []);
+          }
+          farmerProductMap.get(farmerIdStr).push(op);
+        }
+      }
+
+      // Send email and notification to each farmer
+      for (const farmerId of farmerIds) {
+        try {
+          const farmer = await db.collection("users").findOne(
+            { _id: new ObjectId(farmerId) },
+            { projection: { name: 1, email: 1 } }
+          );
+
+          if (farmer) {
+            // Send email to farmer
+            try {
+              await sendOrderPlacedEmailToFarmer(
+                farmer.email,
+                farmer.name,
+                orderId,
+                farmerProductMap.get(farmerId),
+                customer?.name || 'Unknown',
+                total
+              );
+            } catch (emailError) {
+              console.error(`Error sending email to farmer ${farmerId}:`, emailError);
+            }
+
+            // Send notification to farmer
+            await createNotification(
+              farmerId,
+              'order_placed',
+              'New Order Received',
+              `A new order has been placed for your products. Order ID: ${orderId}`,
+              orderId
+            );
+          }
+        } catch (farmerError) {
+          console.error(`Error processing farmer ${farmerId}:`, farmerError);
+        }
+      }
+
+      // Send notification to all admins
+      try {
+        const admins = await db.collection("users")
+          .find({ role: "admin" }, { projection: { _id: 1 } })
+          .toArray();
+
+        for (const admin of admins) {
+          await createNotification(
+            admin._id.toString(),
+            'order_placed',
+            'New Order Placed',
+            `A new order has been placed. Order ID: ${orderId}, Customer: ${customer?.name || 'Unknown'}, Total: Rs. ${total.toLocaleString('en-NP')}`,
+            orderId
+          );
+        }
+      } catch (adminNotifError) {
+        console.error("Error creating admin notifications:", adminNotifError);
+      }
     } catch (notifError) {
-      console.error("Error creating farmer notifications:", notifError);
-      // Don't fail the order if notification fails
+      console.error("Error sending notifications/emails:", notifError);
+      // Don't fail the order if notification/email fails
     }
 
     res.status(201).json({ 
