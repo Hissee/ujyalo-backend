@@ -7,33 +7,139 @@ import { generateVerificationToken, generateOTP, sendVerificationEmail, sendPass
 
 const JWT_SECRET = process.env.JWT_SECRET || "change_this_secret";
 
-// Helper function to validate email
+// Helper function to validate email (stronger validation)
 const validateEmail = (email) => {
-  const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-  return emailRegex.test(email);
+  if (!email || typeof email !== 'string') {
+    return false;
+  }
+  const trimmedEmail = email.trim().toLowerCase();
+  const emailRegex = /^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/;
+  
+  // Additional checks
+  if (trimmedEmail.length > 100) return false;
+  if (trimmedEmail.includes('..')) return false;
+  if (trimmedEmail.startsWith('.') || trimmedEmail.startsWith('@')) return false;
+  
+  return emailRegex.test(trimmedEmail);
 };
 
-// Helper function to validate password
+// Helper function to validate password (strong password requirements)
 const validatePassword = (password) => {
-  // At least 6 characters
-  return password && password.length >= 6;
+  if (!password || typeof password !== 'string') {
+    return false;
+  }
+  
+  // At least 8 characters
+  if (password.length < 8) return false;
+  
+  // At least one uppercase letter
+  if (!/[A-Z]/.test(password)) return false;
+  
+  // At least one lowercase letter
+  if (!/[a-z]/.test(password)) return false;
+  
+  // At least one number
+  if (!/[0-9]/.test(password)) return false;
+  
+  // At least one special character (@, $, !, %, *, ?, & etc.)
+  if (!/[@$!%*?&_+\-=\[\]{};':"\\|,.<>\/()^#]/.test(password)) return false;
+  
+  return true;
+};
+
+// Helper function to validate name (letters, spaces, hyphens, apostrophes only, 2-50 chars)
+const validateName = (name, fieldName) => {
+  if (!name || typeof name !== 'string') {
+    return `${fieldName} is required`;
+  }
+  
+  const trimmedName = name.trim();
+  if (trimmedName.length < 2) {
+    return `${fieldName} must be at least 2 characters`;
+  }
+  if (trimmedName.length > 50) {
+    return `${fieldName} must not exceed 50 characters`;
+  }
+  
+  const nameRegex = /^[a-zA-Z\s\-']{2,50}$/;
+  if (!nameRegex.test(trimmedName)) {
+    return `${fieldName} can only contain letters, spaces, hyphens, and apostrophes`;
+  }
+  
+  return null;
+};
+
+// Helper function to validate phone (Nepal mobile: 10 digits starting with 9)
+const validatePhone = (phone) => {
+  if (!phone || typeof phone !== 'string') {
+    return "Phone number is required";
+  }
+  
+  const trimmedPhone = phone.trim();
+  if (!/^[0-9]{10}$/.test(trimmedPhone)) {
+    return "Phone number must be exactly 10 digits";
+  }
+  
+  if (!/^9[0-9]{9}$/.test(trimmedPhone)) {
+    return "Phone number must start with 9 (Nepal mobile number)";
+  }
+  
+  return null;
 };
 
 // Helper function to validate required fields
 const validateSignupData = (data, role) => {
   const errors = [];
 
-  if (!data.firstName || data.firstName.trim().length === 0) {
-    errors.push("First name is required");
+  // First name validation
+  const firstNameError = validateName(data.firstName, "First name");
+  if (firstNameError) errors.push(firstNameError);
+
+  // Last name validation (if provided)
+  if (data.lastName) {
+    const lastNameError = validateName(data.lastName, "Last name");
+    if (lastNameError) errors.push(lastNameError);
+  } else {
+    errors.push("Last name is required");
   }
+
+  // Middle name validation (optional)
+  if (data.middleName && data.middleName.trim().length > 0) {
+    const middleNameError = validateName(data.middleName, "Middle name");
+    if (middleNameError) errors.push(middleNameError);
+  }
+
+  // Email validation
   if (!data.email || !validateEmail(data.email)) {
     errors.push("Valid email is required");
   }
+
+  // Password validation
   if (!data.password || !validatePassword(data.password)) {
-    errors.push("Password must be at least 6 characters");
+    errors.push("Password must have at least 8 characters, contain at least one uppercase letter, one lowercase letter, one number, and one special character (@, $, !, %, *, ?, & etc.)");
   }
-  if (!data.phone || data.phone.trim().length === 0) {
-    errors.push("Phone number is required");
+
+  // Phone validation
+  const phoneError = validatePhone(data.phone);
+  if (phoneError) errors.push(phoneError);
+
+  // Address validation
+  if (!data.province || data.province.trim().length === 0) {
+    errors.push("Province is required");
+  }
+  
+  if (!data.city || data.city.trim().length < 2) {
+    errors.push("City must be at least 2 characters");
+  }
+  if (data.city && data.city.trim().length > 50) {
+    errors.push("City must not exceed 50 characters");
+  }
+  
+  if (!data.street || data.street.trim().length < 5) {
+    errors.push("Street address must be at least 5 characters");
+  }
+  if (data.street && data.street.trim().length > 200) {
+    errors.push("Street address must not exceed 200 characters");
   }
 
   return errors;
@@ -390,7 +496,7 @@ export const changePasswordWithOTP = async (req, res) => {
     }
 
     if (!validatePassword(newPassword)) {
-      return res.status(400).json({ message: "New password must be at least 6 characters" });
+      return res.status(400).json({ message: "Password must be at least 8 characters with uppercase, lowercase, number, and special character" });
     }
 
     // Get user
@@ -461,7 +567,7 @@ export const updatePassword = async (req, res) => {
     }
 
     if (!validatePassword(newPassword)) {
-      return res.status(400).json({ message: "New password must be at least 6 characters" });
+      return res.status(400).json({ message: "Password must be at least 8 characters with uppercase, lowercase, number, and special character" });
     }
 
     // Get user
@@ -870,7 +976,7 @@ export const resetPassword = async (req, res) => {
     }
 
     if (!validatePassword(newPassword)) {
-      return res.status(400).json({ message: "Password must be at least 6 characters" });
+      return res.status(400).json({ message: "Password must be at least 8 characters with uppercase, lowercase, number, and special character" });
     }
 
     const userEmail = email.toLowerCase().trim();
