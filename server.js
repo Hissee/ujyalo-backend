@@ -23,7 +23,22 @@ const JWT_SECRET = process.env.JWT_SECRET || "change_this_secret";
 
 const app = express();
 app.use(express.json());
-app.use(cors());
+
+// CORS configuration
+const corsOptions = {
+  origin: [
+    'https://ujyalo-khet.vercel.app',
+    'https://ujyalo-admin.vercel.app',
+    'http://localhost:4200', // Development - user frontend
+    'http://localhost:4201', // Development - admin frontend (if different port)
+    'http://localhost:3000'  // Development - backend
+  ],
+  credentials: true,
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With']
+};
+
+app.use(cors(corsOptions));
 
 // Connect MongoDB
 await connectDB();
