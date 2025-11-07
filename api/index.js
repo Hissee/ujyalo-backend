@@ -22,8 +22,23 @@ dotenv.config();
 const JWT_SECRET = process.env.JWT_SECRET || "change_this_secret";
 
 const app = express();
+
+// CORS configuration - must be before other middleware
+app.use(cors({
+  origin: [
+    'https://ujyalo-khet.vercel.app',
+    'http://localhost:4200',
+    'http://localhost:3000'
+  ],
+  credentials: true,
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With']
+}));
+
+// Handle preflight requests
+app.options('*', cors());
+
 app.use(express.json());
-app.use(cors());
 
 // Initialize database connection (lazy initialization for serverless)
 let dbInitialized = false;
@@ -59,9 +74,10 @@ app.use(async (req, res, next) => {
     await ensureDBInitialized();
     next();
   } catch (error) {
+    console.error("Database initialization error:", error);
     res.status(500).json({ 
       message: "Database connection failed", 
-      error: error.message 
+      error: process.env.NODE_ENV === 'development' ? error.message : "Internal server error"
     });
   }
 });
@@ -120,6 +136,23 @@ app.get("/", (req, res) => {
     message: "UjyaloKhet Backend API", 
     status: "running",
     timestamp: new Date().toISOString() 
+  });
+});
+
+// Error handling middleware (must be after all routes)
+app.use((err, req, res, next) => {
+  console.error("Unhandled error:", err);
+  res.status(err.status || 500).json({
+    message: err.message || "Internal server error",
+    error: process.env.NODE_ENV === 'development' ? err.stack : undefined
+  });
+});
+
+// 404 handler
+app.use((req, res) => {
+  res.status(404).json({
+    message: "Route not found",
+    path: req.path
   });
 });
 
