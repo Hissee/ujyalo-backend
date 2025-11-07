@@ -15,7 +15,6 @@ import adminRoutes from "./routes/admin.routes.js";
 import uploadRoutes from "./routes/upload.routes.js";
 import locationRoutes from "./routes/location.routes.js";
 import commentsRoutes from "./routes/comments.routes.js";
-import ratingsRoutes from "./routes/ratings.routes.js";
 import { initializePricePrediction } from "./services/pricePrediction.service.js";
 import { initializeAdminUser } from "./utils/initAdmin.js";
 
@@ -77,7 +76,6 @@ app.use("/api/admin", adminRoutes);
 app.use("/api/upload", uploadRoutes);
 app.use("/api/locations", locationRoutes);
 app.use("/api/comments", commentsRoutes);
-app.use("/api/ratings", ratingsRoutes);
 
 // ----------------- Start Server -----------------
 const PORT = process.env.PORT || 3000;
