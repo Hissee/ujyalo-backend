@@ -20,16 +20,19 @@ export const uploadImage = async (req, res) => {
     }
 
     console.log('Uploading to Cloudinary...');
-    // Upload to Cloudinary
+    // Upload to Cloudinary using server-side SDK (automatically signs requests)
     const uploadResult = await new Promise((resolve, reject) => {
       const uploadStream = cloudinary.uploader.upload_stream(
         {
           folder: 'ujyalo-khet/products', // Organize images in a folder
           resource_type: 'image',
+          use_filename: true,
+          unique_filename: true,
         },
         (error, result) => {
           if (error) {
             console.error('Cloudinary upload stream error:', error);
+            console.error('Error details:', JSON.stringify(error, null, 2));
             reject(error);
           } else {
             console.log('Cloudinary upload successful:', result.public_id);
@@ -90,10 +93,13 @@ export const uploadImages = async (req, res) => {
           {
             folder: 'ujyalo-khet/products',
             resource_type: 'image',
+            use_filename: true,
+            unique_filename: true,
           },
           (error, result) => {
             if (error) {
               console.error(`Cloudinary upload error for file ${index}:`, error);
+              console.error(`Error details for file ${index}:`, JSON.stringify(error, null, 2));
               reject(error);
             } else {
               console.log(`File ${index} uploaded successfully:`, result.public_id);
@@ -121,7 +127,9 @@ export const uploadImages = async (req, res) => {
     });
   } catch (error) {
     console.error('Cloudinary upload error:', error);
+    console.error('Error message:', error.message);
     console.error('Error stack:', error.stack);
+    
     // Handle multer errors
     if (error instanceof multer.MulterError) {
       if (error.code === 'LIMIT_FILE_SIZE') {
@@ -132,6 +140,18 @@ export const uploadImages = async (req, res) => {
       }
       return res.status(400).json({ message: error.message });
     }
+    
+    // Handle Cloudinary-specific errors
+    if (error.message && error.message.includes('Invalid Signature')) {
+      console.error('Cloudinary signature error - check API credentials');
+      return res.status(500).json({
+        message: 'Failed to upload images',
+        error: 'Cloudinary authentication failed. Please check API credentials.',
+        details: process.env.NODE_ENV === 'development' ? error.message : undefined
+      });
+    }
+    
+    // Generic error response
     res.status(500).json({
       message: 'Failed to upload images',
       error: error.message || 'Unknown error',

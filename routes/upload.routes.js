@@ -38,9 +38,11 @@ const handleUpload = (uploadMiddleware, controller) => {
       // Controller is async, so we need to handle it properly
       Promise.resolve(controller(req, res, next)).catch((error) => {
         console.error('Controller error:', error);
+        console.error('Error message:', error.message);
+        console.error('Error stack:', error.stack);
         if (!res.headersSent) {
           res.status(500).json({
-            message: 'Internal server error',
+            message: 'Failed to upload images',
             error: error.message || 'Unknown error',
             details: process.env.NODE_ENV === 'development' ? error.stack : undefined
           });
