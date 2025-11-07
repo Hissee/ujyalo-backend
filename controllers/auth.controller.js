@@ -128,11 +128,16 @@ const validateSignupData = (data, role) => {
     errors.push("Province is required");
   }
   
-  if (!data.city || data.city.trim().length < 2) {
-    errors.push("City must be at least 2 characters");
+  if (!data.district || data.district.trim().length === 0) {
+    errors.push("District is required");
   }
-  if (data.city && data.city.trim().length > 50) {
-    errors.push("City must not exceed 50 characters");
+  
+  if (!data.municipality || data.municipality.trim().length === 0) {
+    errors.push("Municipality is required");
+  }
+  
+  if (!data.ward || data.ward.trim().length === 0) {
+    errors.push("Ward is required");
   }
   
   if (!data.street || data.street.trim().length < 5) {
@@ -149,7 +154,7 @@ const validateSignupData = (data, role) => {
 export const signupConsumer = async (req, res) => {
   try {
     const db = getDB();
-    const { firstName, middleName, lastName, email, phone, province, city, street, password } = req.body;
+    const { firstName, middleName, lastName, email, phone, province, district, municipality, ward, street, password } = req.body;
 
     // Validation
     const validationErrors = validateSignupData(req.body, 'consumer');
@@ -191,7 +196,9 @@ export const signupConsumer = async (req, res) => {
       email: userEmail,
       phone: phone.trim(),
       province: province ? province.trim() : "",
-      city: city ? city.trim() : "",
+      district: district ? district.trim() : "",
+      municipality: municipality ? municipality.trim() : "",
+      ward: ward ? ward.trim() : "",
       street: street ? street.trim() : "",
       password: hashedPassword,
       role: "consumer",
@@ -228,7 +235,7 @@ export const signupConsumer = async (req, res) => {
 export const signupFarmer = async (req, res) => {
   try {
     const db = getDB();
-    const { firstName, middleName, lastName, email, phone, province, city, street, password } = req.body;
+    const { firstName, middleName, lastName, email, phone, province, district, municipality, ward, street, password } = req.body;
 
     // Validation
     const validationErrors = validateSignupData(req.body, 'farmer');
@@ -270,7 +277,9 @@ export const signupFarmer = async (req, res) => {
       email: userEmail,
       phone: phone.trim(),
       province: province ? province.trim() : "",
-      city: city ? city.trim() : "",
+      district: district ? district.trim() : "",
+      municipality: municipality ? municipality.trim() : "",
+      ward: ward ? ward.trim() : "",
       street: street ? street.trim() : "",
       password: hashedPassword,
       role: "farmer",
@@ -608,7 +617,7 @@ export const updatePassword = async (req, res) => {
 export const updateProfile = async (req, res) => {
   try {
     const db = getDB();
-    const { firstName, middleName, lastName, phone, province, city, street } = req.body;
+    const { firstName, middleName, lastName, phone, province, district, municipality, ward, street } = req.body;
 
     const updateData = {
       updatedAt: new Date()
@@ -628,11 +637,13 @@ export const updateProfile = async (req, res) => {
       updateData.name = [finalFirstName, finalMiddleName, finalLastName].filter(Boolean).join(" ").trim();
     }
 
-    if (province !== undefined || city !== undefined || street !== undefined) {
+    if (province !== undefined || district !== undefined || municipality !== undefined || ward !== undefined || street !== undefined) {
       const user = await db.collection("users").findOne({ _id: new ObjectId(req.user.userId) });
       updateData.address = {
         province: province !== undefined ? province.trim() : (user.address?.province || ""),
-        city: city !== undefined ? city.trim() : (user.address?.city || ""),
+        district: district !== undefined ? district.trim() : (user.address?.district || ""),
+        municipality: municipality !== undefined ? municipality.trim() : (user.address?.municipality || ""),
+        ward: ward !== undefined ? ward.trim() : (user.address?.ward || ""),
         street: street !== undefined ? street.trim() : (user.address?.street || "")
       };
     }
@@ -742,7 +753,9 @@ export const verifyEmail = async (req, res) => {
         role: pendingSignup.role,
         address: {
           province: pendingSignup.province || "",
-          city: pendingSignup.city || "",
+          district: pendingSignup.district || "",
+          municipality: pendingSignup.municipality || "",
+          ward: pendingSignup.ward || "",
           street: pendingSignup.street || ""
         },
         password: pendingSignup.password,
@@ -1094,7 +1107,9 @@ export const verifyOTP = async (req, res) => {
       role: pendingSignup.role,
       address: {
         province: pendingSignup.province || "",
-        city: pendingSignup.city || "",
+        district: pendingSignup.district || "",
+        municipality: pendingSignup.municipality || "",
+        ward: pendingSignup.ward || "",
         street: pendingSignup.street || ""
       },
       password: pendingSignup.password,

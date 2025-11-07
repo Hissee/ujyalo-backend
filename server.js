@@ -13,6 +13,7 @@ import farmerRoutes from "./routes/farmer.routes.js";
 import notificationsRoutes from "./routes/notifications.routes.js";
 import adminRoutes from "./routes/admin.routes.js";
 import uploadRoutes from "./routes/upload.routes.js";
+import locationRoutes from "./routes/location.routes.js";
 import { initializePricePrediction } from "./services/pricePrediction.service.js";
 import { initializeAdminUser } from "./utils/initAdmin.js";
 
@@ -72,6 +73,7 @@ app.use("/api/farmer", farmerRoutes);
 app.use("/api/notifications", notificationsRoutes);
 app.use("/api/admin", adminRoutes);
 app.use("/api/upload", uploadRoutes);
+app.use("/api/locations", locationRoutes);
 
 // ----------------- Start Server -----------------
 const PORT = process.env.PORT || 3000;
