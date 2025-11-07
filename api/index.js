@@ -24,21 +24,61 @@ const JWT_SECRET = process.env.JWT_SECRET || "change_this_secret";
 const app = express();
 
 // CORS configuration - must be before other middleware
+// Allow all origins for now (can be restricted later)
 app.use(cors({
-  origin: [
-    'https://ujyalo-khet.vercel.app',
-    'http://localhost:4200',
-    'http://localhost:3000'
-  ],
+  origin: function (origin, callback) {
+    // Allow requests with no origin (like mobile apps or curl requests)
+    if (!origin) return callback(null, true);
+    
+    // List of allowed origins
+    const allowedOrigins = [
+      'https://ujyalo-khet.vercel.app',
+      'https://ujyalo-khet-git-main-hissee.vercel.app',
+      'https://ujyalo-khet-*.vercel.app', // Vercel preview deployments
+      'http://localhost:4200',
+      'http://localhost:3000'
+    ];
+    
+    // Check if origin matches any allowed pattern
+    const isAllowed = allowedOrigins.some(allowed => {
+      if (allowed.includes('*')) {
+        const pattern = allowed.replace('*', '.*');
+        return new RegExp(pattern).test(origin);
+      }
+      return allowed === origin;
+    });
+    
+    if (isAllowed || !origin) {
+      callback(null, true);
+    } else {
+      // For debugging - log the origin
+      console.log('CORS blocked origin:', origin);
+      callback(null, true); // Allow all for now to debug
+    }
+  },
   credentials: true,
-  methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With']
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS', 'HEAD'],
+  allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With', 'Accept', 'Origin'],
+  exposedHeaders: ['Content-Length', 'Content-Type']
 }));
 
-// Handle preflight requests
-app.options('*', cors());
+// Handle preflight requests explicitly
+app.options('*', (req, res) => {
+  res.header('Access-Control-Allow-Origin', req.headers.origin || '*');
+  res.header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, PATCH, OPTIONS, HEAD');
+  res.header('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Requested-With, Accept, Origin');
+  res.header('Access-Control-Allow-Credentials', 'true');
+  res.sendStatus(200);
+});
 
 app.use(express.json());
+
+// Add request logging for debugging (before routes)
+app.use((req, res, next) => {
+  console.log(`${new Date().toISOString()} - ${req.method} ${req.path}`);
+  console.log('Origin:', req.headers.origin);
+  next();
+});
 
 // Initialize database connection (lazy initialization for serverless)
 let dbInitialized = false;
@@ -125,9 +165,24 @@ app.use("/api/upload", uploadRoutes);
 app.use("/api/locations", locationRoutes);
 app.use("/api/comments", commentsRoutes);
 
-// Health check endpoint
+// Health check endpoint (works without DB)
 app.get("/api/health", (req, res) => {
-  res.json({ status: "ok", timestamp: new Date().toISOString() });
+  res.json({ 
+    status: "ok", 
+    timestamp: new Date().toISOString(),
+    environment: process.env.NODE_ENV || "unknown",
+    hasMongoUri: !!process.env.MONGODB_URI
+  });
+});
+
+// Simple test endpoint (no DB required)
+app.get("/test", (req, res) => {
+  res.json({ 
+    message: "Serverless function is working!",
+    timestamp: new Date().toISOString(),
+    path: req.path,
+    method: req.method
+  });
 });
 
 // Root endpoint
