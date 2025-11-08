@@ -57,11 +57,33 @@ export const addProduct = async (req, res) => {
 export const getAllProducts = async (req, res) => {
   try {
     const db = getDB();
-    const products = await db.collection("products")
-      .find({ status: "available" })
-      .toArray();
-    res.json(products);
+    // Get all products first
+    const allProducts = await db.collection("products").find({}).toArray();
+    
+    console.log(`Total products in database: ${allProducts.length}`);
+    
+    // Filter out products with status "sold out" and ensure quantity > 0
+    const availableProducts = allProducts.filter(product => {
+      // If product has status field, it must be "available"
+      if (product.status) {
+        const isAvailable = product.status === "available";
+        if (!isAvailable) {
+          console.log(`Product ${product.name} (${product._id}) filtered out - status: ${product.status}`);
+        }
+        return isAvailable;
+      }
+      // If no status field, include it (backward compatibility) but check quantity
+      const hasQuantity = (product.quantity || 0) > 0;
+      if (!hasQuantity) {
+        console.log(`Product ${product.name} (${product._id}) filtered out - quantity: ${product.quantity}`);
+      }
+      return hasQuantity;
+    });
+    
+    console.log(`Available products: ${availableProducts.length}`);
+    res.json(availableProducts);
   } catch (error) {
+    console.error("Error fetching products:", error);
     res.status(500).json({ message: "Server error", error: error.message });
   }
 };
@@ -79,20 +101,27 @@ export const getProductById = async (req, res) => {
       return res.status(400).json({ message: "Invalid product ID" });
     }
 
-    const product = await db.collection("products").findOne({
+    // First try to find product with available status
+    let product = await db.collection("products").findOne({
       _id: new ObjectId(id),
       status: "available"
     });
 
+    // If not found, try without status filter (for backward compatibility)
     if (!product) {
-      console.log('Product not found or not available:', id);
-      // Check if product exists but has different status
-      const productAnyStatus = await db.collection("products").findOne({
+      product = await db.collection("products").findOne({
         _id: new ObjectId(id)
       });
-      if (productAnyStatus) {
-        console.log('Product exists but status is:', productAnyStatus.status);
+      
+      // If found but has status "sold out" or quantity <= 0, reject it
+      if (product && (product.status === "sold out" || (product.quantity || 0) <= 0)) {
+        console.log('Product found but not available:', id, 'status:', product.status, 'quantity:', product.quantity);
+        return res.status(404).json({ message: "Product not found or not available" });
       }
+    }
+
+    if (!product) {
+      console.log('Product not found:', id);
       return res.status(404).json({ message: "Product not found or not available" });
     }
 
