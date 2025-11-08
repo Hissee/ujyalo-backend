@@ -1,6 +1,8 @@
 import { getDB } from "../db.js";
 import { ObjectId } from "mongodb";
 import { createNotification } from "./notifications.controller.js";
+import { createTransaction } from "./transactions.controller.js";
+import { PaymentGateway } from "../models/transaction.model.js";
 
 // Place Order
 export const placeOrder = async (req, res) => {
@@ -57,8 +59,28 @@ export const placeOrder = async (req, res) => {
     const result = await db.collection("orders").insertOne(order);
     const orderId = result.insertedId.toString();
 
+    // Create transaction record
+    try {
+      const paymentGateway = paymentMethod === "cash_on_delivery" 
+        ? PaymentGateway.CASH_ON_DELIVERY 
+        : paymentMethod === "esewa" 
+        ? PaymentGateway.ESEWA 
+        : PaymentGateway.KHALTI;
+      
+      await createTransaction(
+        orderId,
+        req.user.userId,
+        paymentGateway,
+        total,
+        "NPR"
+      );
+    } catch (transactionError) {
+      console.error("Error creating transaction:", transactionError);
+      // Don't fail the order if transaction creation fails, but log it
+    }
+
     // Only reduce product quantity for Cash on Delivery orders immediately
-    // For Khalti, wait for payment verification
+    // For Khalti/eSewa, wait for payment verification
     if (paymentMethod === "cash_on_delivery" || paymentStatus === "completed") {
       for (const p of orderProducts) {
         await db.collection("products").updateOne({ _id: p.productId }, { $inc: { quantity: -p.quantity } });
@@ -273,6 +295,15 @@ export const verifyKhaltiPayment = async (req, res) => {
       }
     );
 
+    // Update transaction record
+    try {
+      const { updateKhaltiTransaction } = await import("./transactions.controller.js");
+      await updateKhaltiTransaction(orderId, khaltiResponse, true);
+    } catch (transactionError) {
+      console.error("Error updating Khalti transaction:", transactionError);
+      // Continue even if transaction update fails
+    }
+
     // Reduce product quantities
     for (const p of order.products) {
       await db.collection("products").updateOne(
@@ -334,6 +365,140 @@ export const verifyKhaltiPayment = async (req, res) => {
     });
   } catch (err) {
     console.error("Khalti verification error:", err);
+    res.status(500).json({ 
+      success: false,
+      message: "Server error", 
+      error: err.message 
+    });
+  }
+};
+
+// Verify eSewa Payment
+export const verifyEsewaPayment = async (req, res) => {
+  try {
+    const db = getDB();
+    const { orderId, esewaResponse } = req.body;
+
+    if (!orderId || !esewaResponse) {
+      return res.status(400).json({ 
+        success: false,
+        message: "Order ID and eSewa response are required" 
+      });
+    }
+
+    if (!ObjectId.isValid(orderId)) {
+      return res.status(400).json({ 
+        success: false,
+        message: "Invalid order ID" 
+      });
+    }
+
+    // Find the order
+    const order = await db.collection("orders").findOne({ _id: new ObjectId(orderId) });
+    
+    if (!order) {
+      return res.status(404).json({ 
+        success: false,
+        message: "Order not found" 
+      });
+    }
+
+    // Verify the order belongs to the user
+    if (order.customerId.toString() !== req.user.userId) {
+      return res.status(403).json({ 
+        success: false,
+        message: "Access denied" 
+      });
+    }
+
+    // Check if payment is successful
+    const isSuccess = esewaResponse.status === "COMPLETE" || esewaResponse.status === "SUCCESS";
+
+    // Update order payment status
+    await db.collection("orders").updateOne(
+      { _id: new ObjectId(orderId) },
+      {
+        $set: {
+          paymentStatus: isSuccess ? "completed" : "failed",
+          status: isSuccess ? "confirmed" : order.status,
+          esewaPaymentId: esewaResponse.transaction_uuid || null,
+          paymentVerifiedAt: isSuccess ? new Date() : null,
+          updatedAt: new Date()
+        }
+      }
+    );
+
+    // Update transaction record
+    try {
+      const { updateEsewaTransaction } = await import("./transactions.controller.js");
+      await updateEsewaTransaction(orderId, esewaResponse, isSuccess);
+    } catch (transactionError) {
+      console.error("Error updating eSewa transaction:", transactionError);
+      // Continue even if transaction update fails
+    }
+
+    // If payment successful, reduce product quantities
+    if (isSuccess) {
+      for (const p of order.products) {
+        await db.collection("products").updateOne(
+          { _id: p.productId }, 
+          { $inc: { quantity: -p.quantity } }
+        );
+        await db.collection("products").updateOne(
+          { _id: p.productId, quantity: { $lte: 0 } }, 
+          { $set: { status: "sold out" } }
+        );
+      }
+
+      // Send notifications
+      try {
+        await createNotification(
+          order.customerId.toString(),
+          'order_payment_completed',
+          'Payment Completed',
+          `Your eSewa payment has been completed and order has been confirmed. Order ID: ${orderId}`,
+          orderId
+        );
+
+        await createNotification(
+          order.customerId.toString(),
+          'order_confirmed',
+          'Order Confirmed',
+          `Your order has been confirmed. Order ID: ${orderId}`,
+          orderId
+        );
+
+        // Notify farmers
+        const farmerIds = new Set();
+        for (const op of order.products) {
+          const product = await db.collection("products").findOne({ _id: op.productId });
+          if (product && product.farmerId) {
+            farmerIds.add(product.farmerId.toString());
+          }
+        }
+        
+        for (const farmerId of farmerIds) {
+          await createNotification(
+            farmerId,
+            'order_confirmed',
+            'Order Confirmed',
+            `Order ${orderId} has been confirmed and payment completed.`,
+            orderId
+          );
+        }
+      } catch (notifError) {
+        console.error("Error creating notifications:", notifError);
+      }
+    }
+
+    res.json({
+      success: isSuccess,
+      message: isSuccess ? "eSewa payment verified successfully" : "eSewa payment verification failed",
+      orderId: orderId,
+      esewaTransactionId: esewaResponse.transaction_uuid || null
+    });
+  } catch (err) {
+    console.error("eSewa verification error:", err);
     res.status(500).json({ 
       success: false,
       message: "Server error", 

@@ -1,5 +1,5 @@
 import express from "express";
-import { placeOrder, listUserOrders, verifyKhaltiPayment } from "../controllers/orders.controller.js";
+import { placeOrder, listUserOrders, verifyKhaltiPayment, verifyEsewaPayment } from "../controllers/orders.controller.js";
 import { verifyToken, requireRole } from "../middlewares/auth.middleware.js";
 
 const router = express.Router();
@@ -12,5 +12,8 @@ router.get("/my", verifyToken, requireRole("consumer", "customer"), listUserOrde
 
 // Verify Khalti payment
 router.post("/verify-khalti", verifyToken, requireRole("consumer", "customer"), verifyKhaltiPayment);
+
+// Verify eSewa payment
+router.post("/verify-esewa", verifyToken, requireRole("consumer", "customer"), verifyEsewaPayment);
 
 export default router;
